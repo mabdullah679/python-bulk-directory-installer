@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.venv/
+# Output of run_maven_builds.py
+log-files/
+.DS_Store
