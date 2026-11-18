@@ -1,68 +1,50 @@
 # Multi-Directory Maven Installer
 
-This script finds subdirectories that match a name pattern, runs `mvn clean install` inside each one, and writes failed build logs to a timestamped log file.
+A stdlib-only Python script that finds subdirectories matching a name pattern, runs `mvn clean install` in each, and writes a timestamped log of the run (failed-build output included).
+
+```
+run_maven_builds.py --root DIR --pattern GLOB
+   -> recursive scan for dirs matching GLOB
+   -> `mvn clean install` in each (PASS/FAIL printed)
+   -> DIR/log-files/YYYYMMDD-HHMMSS.log (failures, or "No failed builds.")
+```
+
+Not local/contained: Maven itself (and whatever repositories your projects' builds download from) must be supplied by you.
 
 ## Prerequisites
+- Python 3.8+ (tested on 3.14); standard library only, nothing to `pip install`.
+- Maven (`mvn`) on `PATH` for real runs. The tests do not need it.
 
-- Python 3.8+
-- Maven (`mvn`) available in your PATH
+## Run it
+1. `python3 run_maven_builds.py --root /path/to/projects` (PowerShell: `python .\run_maven_builds.py --root "C:\path\to\projects"`).
+2. Read PASS/FAIL lines and the final `Completed: total=, passed=, failed=` line.
+3. Open the log named at the end of the output.
 
-## File in this project
+Defaults: `--root` is the script's own folder, `--pattern` is `elavon-*-ds-na`, `--log-dir` is `log-files` (created under the root). Use `--pattern "svc-*"` to match other folders.
 
-- `run_maven_builds.py`
+If nothing happens: no matching directory gives "No subdirectories matching..." and exit 0; check `--root` and `--pattern` (the pattern matches the directory name, not the path).
 
-## Quick start (default behavior)
+## What it does
+| Situation | Result |
+|---|---|
+| All matched builds succeed | exit 0, log contains `No failed builds.` |
+| One or more builds fail | exit 1, log has name, path, exit code and captured mvn output per failure |
+| No matching directories | exit 0, no log written |
+| `--root` is not a directory | exit 2 |
+| `mvn` not on `PATH` | exit 3 |
 
-From this project folder, run:
+Builds run one after another, not in parallel.
 
-```powershell
-python .\run_maven_builds.py
-```
+## Tests
+`python3 -m unittest discover -s tests -v`: 6 tests in [tests/test_run_maven_builds.py](tests/test_run_maven_builds.py) covering every exit code, pattern selection and the log contents. They put a fake `mvn` script on `PATH`, so they need no Maven and no network. They do not cover a real Maven build. CI: [ci.yml](.github/workflows/ci.yml).
 
-Default behavior:
+## Layout
+| Path | Role |
+|---|---|
+| [run_maven_builds.py](run_maven_builds.py) | the whole tool |
+| [tests/test_run_maven_builds.py](tests/test_run_maven_builds.py) | unit tests with fake `mvn` |
+| [.github/workflows/ci.yml](.github/workflows/ci.yml) | tests + gitleaks on PRs |
 
-- Searches recursively from this script's folder
-- Matches subdirectory names with pattern `elavon-*-ds-na`
-- Runs `mvn clean install` in each matched folder
-- Writes logs to `log-files\YYYYMMDD-HHMMSS.log`
-
-## Run for a desired target subdirectory
-
-If you want to scan only a specific folder tree, pass `--root`:
-
-```powershell
-python .\run_maven_builds.py --root "C:\path\to\your\target\folder"
-```
-
-## Use a custom matching pattern
-
-```powershell
-python .\run_maven_builds.py --root "C:\path\to\your\target\folder" --pattern "elavon-*-ds-na"
-```
-
-## Use a custom log folder name
-
-```powershell
-python .\run_maven_builds.py --log-dir "log-files"
-```
-
-## Output and logs
-
-- Successful builds are printed to the console as `PASS`
-- Failed builds are printed as `FAIL`
-- Every run creates a new timestamped log file so multiple runs are preserved
-- For failures, each entry is recorded in this format:
-
-```text
-subdirectory-name: logs of failed build
-Path: ...
-Exit code: ...
-<captured mvn output>
-```
-
-## Exit codes
-
-- `0`: all builds passed, or no matching directories found
-- `1`: one or more builds failed
-- `2`: invalid `--root` path
-- `3`: Maven not found in PATH
+## Design notes
+- A new log file per run (timestamped) rather than appending to one file, so earlier runs stay comparable.
+- Failures are collected and logged at the end instead of stopping at the first one, so one bad module does not hide the rest.
